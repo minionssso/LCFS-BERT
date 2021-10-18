@@ -11,18 +11,20 @@ from time import strftime, localtime
 import random
 import numpy
 
-from pytorch_transformers import BertModel,XLNetModel,RobertaModel
+from transformers import BertModel,XLNetModel,RobertaModel
+
+
 from sklearn import metrics
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-from pytorch_transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
+from transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
 from data_utils import build_tokenizer, build_embedding_matrix, ABSADataset,Tokenizer4Pretrain
 
 from models import LSTM, IAN, MemNet, RAM, TD_LSTM, Cabasc, ATAE_LSTM, TNet_LF, AOA, MGAN, LCFS_BERT
 from models.aen import CrossEntropyLoss_LSR, AEN_BERT
 from models.bert_spc import BERT_SPC
-from models.xlnet_spc import XLNET_SPC
+# from models.xlnet_spc import XLNET_SPC
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -236,7 +238,7 @@ def main():
         'aoa': AOA,
         'mgan': MGAN,
         'bert_spc': BERT_SPC,
-        'xlnet_spc':XLNET_SPC,
+        # 'xlnet_spc':XLNET_SPC,
         'aen_bert': AEN_BERT,
         'lcfs_bert': LCFS_BERT,
         # default hyper-parameters for LCF-BERT model is as follws:

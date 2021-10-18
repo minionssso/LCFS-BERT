@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import Dataset
 import networkx as nx
 import spacy
-from pytorch_transformers import BertTokenizer,XLNetTokenizer
+from transformers import BertTokenizer,XLNetTokenizer
 
 
 def build_tokenizer(fnames, max_seq_len, dat_fname):
@@ -64,7 +64,7 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
         pickle.dump(embedding_matrix, open(dat_fname, 'wb'))
     return embedding_matrix
 
-
+# TODO 这里用int64，0.5的值算完变为 0了
 def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating='post', value=0):
     x = (np.ones(maxlen) * value).astype(dtype)
     if truncating == 'pre':
@@ -157,7 +157,7 @@ class ABSADataset(Dataset):
         for i in range(0, len(lines), 3):
             text_left, _, text_right = [s.lower().strip() for s in lines[i].partition("$T$")]
             aspect = lines[i + 1].lower().strip()
-            auxiliary_aspect = 'What is the polarity of {}'.format(aspect)
+            auxiliary_aspect = 'What is the polarity of {}'.format(aspect) # TODO
             polarity = lines[i + 2].strip()
 
             raw_text = text_left + " " + aspect + " " + text_right
@@ -181,13 +181,13 @@ class ABSADataset(Dataset):
             bert_segments_ids = np.asarray([0] * (np.sum(text_raw_indices != 0) + 2) + [1] * (aspect_len + 1))
             if 'Roberta' in type(tokenizer.tokenizer).__name__:
                 bert_segments_ids = np.zeros(np.sum(text_raw_indices != 0) + 2 + aspect_len + 1)
-            bert_segments_ids = pad_and_truncate(bert_segments_ids, tokenizer.max_seq_len)
+            bert_segments_ids = pad_and_truncate(bert_segments_ids, tokenizer.max_seq_len)  # padding置零
 
             text_raw_bert_indices = tokenizer.text_to_sequence(tokenizer.cls_token+ ' ' + text_left + " " + aspect + " " + text_right
                                                                + " " + tokenizer.sep_token)
 
             # Find distance in dependency parsing tree
-            raw_tokens, dist = calculate_dep_dist(sent,aspect)
+            raw_tokens, dist = calculate_dep_dist(sent,aspect)  # 返回 dist距离
             raw_tokens.insert(0,tokenizer.cls_token)
             dist.insert(0,0)
             raw_tokens.append(tokenizer.sep_token)
@@ -223,7 +223,8 @@ class ABSADataset(Dataset):
 
     def __len__(self):
         return len(self.data)
-nlp = spacy.load("en_core_web_sm")
+
+nlp = spacy.load("en_core_web_sm")  # 加载语言模型
 def calculate_dep_dist(sentence,aspect):
     terms = [a.lower() for a in aspect.split()]
     doc = nlp(sentence)
@@ -231,13 +232,13 @@ def calculate_dep_dist(sentence,aspect):
     edges = []
     cnt = 0
     term_ids = [0] * len(terms)
-    for token in doc:
+    for token in doc:  # 遍历句子中的token
         # Record the position of aspect terms
-        if cnt < len(terms) and token.lower_ == terms[cnt]:
-            term_ids[cnt] = token.i
+        if cnt < len(terms) and token.lower_ == terms[cnt]: 
+            term_ids[cnt] = token.i  # 把aspect在句子中的位置存于term_ids中
             cnt += 1
 
-        for child in token.children:
+        for child in token.children:  # 句法上的直接子节点
             edges.append(('{}_{}'.format(token.lower_,token.i),
                           '{}_{}'.format(child.lower_,child.i)))
 
@@ -251,9 +252,9 @@ def calculate_dep_dist(sentence,aspect):
         for term_id,term in zip(term_ids,terms):
             target = '{}_{}'.format(term, term_id)
             try:
-                sum += nx.shortest_path_length(graph,source=source,target=target)
+                sum += nx.shortest_path_length(graph,source=source,target=target)  # 求最短路径长度
             except:
                 sum += len(doc) # No connection between source and target
-        dist[i] = sum/len(terms)
+        dist[i] = sum/len(terms) # 多个asp token分别和句子token之间的距离，再除以asp token的数量
         text[i] = word.text
     return text,dist
