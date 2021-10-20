@@ -8,7 +8,8 @@ import torch.nn as nn
 import copy
 import numpy as np
 
-from transformers.models.bert.modeling_bert import BertPooler, BertSelfAttention, BertConfig
+# from transformers.models.bert.modeling_bert import BertPooler, BertSelfAttention, BertConfig
+from pytorch_transformers.modeling_bert import BertPooler, BertSelfAttention, BertConfig
 
 
 class PointwiseFeedForward(nn.Module):
@@ -31,20 +32,24 @@ class PointwiseFeedForward(nn.Module):
         return output
 
 class SelfAttention(nn.Module):
-    def __init__(self, config,opt):
+    def __init__(self, config, opt):
         super(SelfAttention, self).__init__()
         self.opt = opt
         self.config = config
         self.SA = BertSelfAttention(config)
         self.tanh = torch.nn.Tanh()
 
-    def forward(self, inputs):
+    def forward(self, inputs, opt):
         zero_tensor = torch.tensor(np.zeros((inputs.size(0), 1, 1, self.opt.max_seq_len),
                                             dtype=np.float32), dtype=torch.float32).to(self.opt.device)
-        SA_out,att = self.SA(inputs, zero_tensor)
+        SA_out,att = self.SA(inputs, zero_tensor)  # att=(16,12,80,80)
 
         SA_out = self.tanh(SA_out)
         return SA_out,att
+        # zero_vec = np.zeros((inputs.size(0), 1, 1, self.opt.max_seq_len))
+        # zero_tensor = torch.tensor(zero_vec).float().to(self.opt.device)
+        # SA_out = self.SA(inputs, zero_tensor)
+        # return self.tanh(SA_out[0])
 
 class LCFS_BERT(nn.Module):
     def __init__(self, model, opt):
@@ -54,7 +59,7 @@ class LCFS_BERT(nn.Module):
         elif 'xlnet' in opt.pretrained_bert_name:
             hidden = model.config.d_model
         self.hidden = hidden
-        sa_config = BertConfig(hidden_size=self.hidden,output_attentions=True)
+        sa_config = BertConfig(hidden_size=self.hidden, output_attentions=True)
 
         self.bert_spc = model
         self.bert_g_sa = SelfAttention(sa_config,opt)
@@ -66,7 +71,7 @@ class LCFS_BERT(nn.Module):
         self.bert_local_pct = PointwiseFeedForward(self.hidden)
 
         self.dropout = nn.Dropout(opt.dropout)
-        self.bert_sa = SelfAttention(sa_config,opt)
+        self.bert_sa = SelfAttention(sa_config, opt)
 
         # self.mean_pooling_double = nn.Linear(hidden * 2, hidden)
         self.mean_pooling_double = PointwiseFeedForward(hidden * 2, hidden,hidden)
@@ -145,7 +150,7 @@ class LCFS_BERT(nn.Module):
         masked_text_raw_indices = torch.from_numpy(masked_text_raw_indices)
         return masked_text_raw_indices.to(self.opt.device)
 
-    def forward(self, inputs, output_attentions = False):
+    def forward(self, inputs, output_attentions=False):
         text_bert_indices = inputs[0]
         bert_segments_ids = inputs[1]
         text_local_indices = inputs[2] # Raw text without adding aspect term
@@ -178,7 +183,7 @@ class LCFS_BERT(nn.Module):
         #bert_local_out = self.bert_local_sa(bert_local_out)
         out_cat = torch.cat((bert_local_out, bert_spc_out), dim=-1)
         mean_pool = self.mean_pooling_double(out_cat)
-        self_attention_out, local_att = self.bert_sa(mean_pool)
+        self_attention_out, local_att = self.bert_sa(mean_pool, self.opt)
         pooled_out = self.bert_pooler(self_attention_out)
         dense_out = self.dense(pooled_out)
         if output_attentions:

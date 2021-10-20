@@ -10,7 +10,8 @@ import torch
 from torch.utils.data import Dataset
 import networkx as nx
 import spacy
-from transformers import BertTokenizer,XLNetTokenizer
+# from transformers import BertTokenizer,XLNetTokenizer
+from pytorch_transformers import BertTokenizer,XLNetTokenizer
 
 
 def build_tokenizer(fnames, max_seq_len, dat_fname):
