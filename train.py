@@ -11,14 +11,15 @@ from time import strftime, localtime
 import random
 import numpy
 
-from transformers import BertModel,XLNetModel,RobertaModel
-
+# from transformers import BertModel,XLNetModel,RobertaModel
+from pytorch_transformers import BertModel,XLNetModel,RobertaModel
 
 from sklearn import metrics
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-from transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
+# from transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
+from pytorch_transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
 from data_utils import build_tokenizer, build_embedding_matrix, ABSADataset, Tokenizer4Bert, Tokenizer
 
 from models import LSTM, IAN, MemNet, RAM, TD_LSTM, Cabasc, ATAE_LSTM, TNet_LF, AOA, MGAN, LCFS_BERT, LCFS_GLOVE
@@ -63,10 +64,10 @@ class Instructor:
                 word2idx=tokenizer.word2idx,
                 embed_dim=opt.embed_dim,
                 dat_fname='{0}_{1}_embedding_matrix.dat'.format(str(opt.embed_dim), opt.dataset))
-            tokenizer = Tokenizer(tokenizer, opt.max_seq_len)
+            # tokenizer = Tokenizer(tokenizer, opt.max_seq_len)
             self.model = opt.model_class(embedding_matrix, opt).to(opt.device)
 
-        self.trainset = ABSADataset(opt.dataset_file['train'], tokenizer)
+        self.trainset = ABSADataset(opt.dataset_file['train'], tokenizer)  # 在这里计算依赖树距离
         self.testset = ABSADataset(opt.dataset_file['test'], tokenizer)
         assert 0 <= opt.valset_ratio < 1
         if opt.valset_ratio > 0:
@@ -197,8 +198,8 @@ class Instructor:
 def main():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='lcfs_bert', type=str)
-    parser.add_argument('--dataset', default='twitter', type=str, help='twitter, restaurant, laptop')
+    parser.add_argument('--model_name', default='lcfs_glove', type=str)  # lcfs_bert
+    parser.add_argument('--dataset', default='restaurant', type=str, help='twitter, restaurant, laptop')
     parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--initializer', default='xavier_uniform_', type=str)
     parser.add_argument('--learning_rate', default=2e-5, type=float, help='try 5e-5, 2e-5 for BERT, 1e-3 for others')
@@ -215,8 +216,8 @@ def main():
     parser.add_argument('--polarities_dim', default=3, type=int)
     parser.add_argument('--hops', default=3, type=int)
     parser.add_argument('--lsr',default=False)
-    parser.add_argument('--device', default=None, type=str, help='e.g. cuda:0')
-    parser.add_argument('--seed', default=None, type=int, help='set seed for reproducibility')
+    parser.add_argument('--device', default='cuda:0', type=str, help='e.g. cuda:0')
+    parser.add_argument('--seed', default=747, type=int, help='set seed for reproducibility')
     parser.add_argument('--valset_ratio', default=0, type=float, help='set ratio between 0 and 1 for validation support')
     # The following parameters are only valid for the lcf-bert model
     parser.add_argument('--local_context_focus', default='cdm', type=str, help='local context focus mode, cdw or cdm')

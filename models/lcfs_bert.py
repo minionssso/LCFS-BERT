@@ -8,7 +8,8 @@ import torch.nn as nn
 import copy
 import numpy as np
 
-from transformers.models.bert.modeling_bert import BertPooler, BertSelfAttention, BertConfig
+# from transformers.models.bert.modeling_bert import BertPooler, BertSelfAttention, BertConfig
+from pytorch_transformers.modeling_bert import BertPooler, BertSelfAttention, BertConfig
 
 
 class PointwiseFeedForward(nn.Module):

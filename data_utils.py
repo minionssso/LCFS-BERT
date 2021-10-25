@@ -10,8 +10,8 @@ import torch
 from torch.utils.data import Dataset
 import networkx as nx
 import spacy
-from transformers import BertTokenizer,XLNetTokenizer
-# from pytorch_transformers import BertTokenizer,XLNetTokenizer
+# from transformers import BertTokenizer,XLNetTokenizer
+from pytorch_transformers import BertTokenizer,XLNetTokenizer
 
 
 
@@ -37,13 +37,24 @@ def build_tokenizer(fnames, max_seq_len, dat_fname):
     return tokenizer
 
 
-def _load_word_vec(path, word2idx=None):
+# def _load_word_vec(path, word2idx=None):
+#     fin = open(path, 'r', encoding='utf-8', newline='\n', errors='ignore')
+#     word_vec = {}
+#     for line in fin:
+#         tokens = line.rstrip().split()
+#         if word2idx is None or tokens[0] in word2idx.keys():
+#             word_vec[tokens[0]] = np.asarray(tokens[1:], dtype='float32')
+#     return word_vec
+
+def _load_word_vec(path, word2idx=None, embed_dim=300):
+    # path=glove文件
     fin = open(path, 'r', encoding='utf-8', newline='\n', errors='ignore')
     word_vec = {}
     for line in fin:
-        tokens = line.rstrip().split()
-        if word2idx is None or tokens[0] in word2idx.keys():
-            word_vec[tokens[0]] = np.asarray(tokens[1:], dtype='float32')
+        tokens = line.rstrip().split()  # 删除字符串末尾空格
+        word, vec = ' '.join(tokens[:-embed_dim]), tokens[-embed_dim:]
+        if word in word2idx.keys():
+            word_vec[word] = np.asarray(vec, dtype='float32')
     return word_vec
 
 
@@ -55,8 +66,9 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
         print('loading word vectors...')
         embedding_matrix = np.zeros((len(word2idx) + 2, embed_dim))  # idx 0 and len(word2idx)+1 are all-zeros
         fname = './glove.twitter.27B/glove.twitter.27B.' + str(embed_dim) + 'd.txt' \
-            if embed_dim != 300 else './glove/glove.6B.300d.txt'
-        word_vec = _load_word_vec(fname, word2idx=word2idx)
+            if embed_dim != 300 else './glove/glove.840B.300d.txt'
+        # word_vec = _load_word_vec(fname, word2idx=word2idx)
+        word_vec = _load_word_vec(fname, word2idx=word2idx, embed_dim=embed_dim)
         print('building embedding_matrix:', dat_fname)
         for word, i in word2idx.items():
             vec = word_vec.get(word)
@@ -82,9 +94,10 @@ def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating
     return x
 
 
+# 非BERT模型用此Tokenizer
 class Tokenizer(object):
-    def __init__(self, tokenizer, max_seq_len, lower=True):
-        self.tokenizer = tokenizer
+    def __init__(self, max_seq_len, lower=True):
+        # self.tokenizer = tokenizer
         self.lower = lower
         self.max_seq_len = max_seq_len
         self.word2idx = {}
@@ -119,7 +132,7 @@ class Tokenizer(object):
             sequence.append(word)
             distances.append(dist)
         # sequence = self.tokenizer.convert_tokens_to_ids(sequence)
-        sequence = self.tokenizer.text_to_sequence(sequence)
+        sequence = self.text_to_sequence(sequence)  # sequence是list,要先变为str
 
         if len(sequence) == 0:
             sequence = [0]
@@ -161,7 +174,7 @@ class Tokenizer4Bert:
             for jx, token in enumerate(tokens):
                 sequence.append(token)
                 distances.append(dist)
-        sequence = self.tokenizer.convert_tokens_to_ids(sequence)
+        sequence = self.tokenizer.convert_tokens_to_ids(sequence)  # sequence是str吗
 
         if len(sequence) == 0:
             sequence = [0]

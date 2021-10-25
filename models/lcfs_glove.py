@@ -11,7 +11,8 @@ from layers.squeeze_embedding import SqueezeEmbedding
 from layers.attention import Attention
 
 # from layers.point_wise_feed_forward import PositionwiseFeedForward
-from transformers.models.bert.modeling_bert import BertPooler
+# from transformers.models.bert.modeling_bert import BertPooler
+# from pytorch_transformers.modeling_bert import BertPooler, BertSelfAttention, BertConfig
 
 
 class MyPooler(nn.Module):
