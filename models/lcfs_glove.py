@@ -7,8 +7,26 @@ import torch
 import torch.nn as nn
 import copy
 import numpy as np
+from layers.squeeze_embedding import SqueezeEmbedding
+from layers.attention import Attention
 
-from transformers.models.bert.modeling_bert import BertPooler, BertSelfAttention, BertConfig
+# from layers.point_wise_feed_forward import PositionwiseFeedForward
+from transformers.models.bert.modeling_bert import BertPooler
+
+
+class MyPooler(nn.Module):
+    def __init__(self, opt):
+        super().__init__()
+        self.dense = nn.Linear(opt.hidden_dim, opt.hidden_dim)
+        self.activation = nn.Tanh()
+
+    def forward(self, hidden_states):
+        # We "pool" the model by simply taking the hidden state corresponding
+        # to the first token.
+        first_token_tensor = hidden_states[:, 0]
+        pooled_output = self.dense(first_token_tensor)
+        pooled_output = self.activation(pooled_output)
+        return pooled_output
 
 
 class PointwiseFeedForward(nn.Module):
@@ -24,54 +42,28 @@ class PointwiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.relu = nn.ReLU()
 
-    def forward(self, x):
-        output = self.relu(self.w_1(x.transpose(1, 2)))
-        output = self.w_2(output).transpose(2, 1)
-        output = self.dropout(output)
-        return output
 
-class SelfAttention(nn.Module):
-    def __init__(self, config, opt):
-        super(SelfAttention, self).__init__()
-        self.opt = opt
-        self.config = config
-        self.SA = BertSelfAttention(config)
-        self.tanh = torch.nn.Tanh()
-
-    def forward(self, inputs):
-        zero_tensor = torch.tensor(np.zeros((inputs.size(0), 1, 1, self.opt.max_seq_len),
-                                            dtype=np.float32), dtype=torch.float32).to(self.opt.device)  # (16,1,1,80)
-        SA_out,att = self.SA(inputs, zero_tensor)  # inputs=(16,80,768)
-
-        SA_out = self.tanh(SA_out)
-        return SA_out,att
-
-class LCFS_BERT(nn.Module):
-    def __init__(self, model, opt):
-        super(LCFS_BERT, self).__init__()
-        if 'bert' in opt.pretrained_bert_name:
-            hidden = model.config.hidden_size
-        elif 'xlnet' in opt.pretrained_bert_name:
-            hidden = model.config.d_model
-        self.hidden = hidden
-        sa_config = BertConfig(hidden_size=self.hidden,output_attentions=True)
-
-        self.bert_spc = model
-        self.bert_g_sa = SelfAttention(sa_config,opt)
-        self.bert_g_pct = PointwiseFeedForward(self.hidden)
+class LCFS_GLOVE(nn.Module):
+    def __init__(self, embedding_matrix, opt):
+        super(LCFS_GLOVE, self).__init__()
+        # sa_config = BertConfig(hidden_size=self.hidden,output_attentions=True)
 
         self.opt = opt
-        self.bert_local = copy.deepcopy(model)
-        self.bert_local_sa = SelfAttention(sa_config, opt)
-        self.bert_local_pct = PointwiseFeedForward(self.hidden)
+        self.embed = nn.Embedding.from_pretrained(torch.tensor(embedding_matrix, dtype=torch.float))
+        self.squeeze_embedding = SqueezeEmbedding()
+
+        self.mhsa_global = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='mlp')
+        self.pct_global = PointwiseFeedForward(opt.hidden_dim, dropout=opt.dropout)
+        self.mhsa_local = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='mlp')
+        self.pct_local = PointwiseFeedForward(opt.hidden_dim, dropout=opt.dropout)
 
         self.dropout = nn.Dropout(opt.dropout)
-        self.bert_sa = SelfAttention(sa_config, opt)
 
         # self.mean_pooling_double = nn.Linear(hidden * 2, hidden)
-        self.mean_pooling_double = PointwiseFeedForward(hidden * 2, hidden,hidden)
-        self.bert_pooler = BertPooler(sa_config)
-        self.dense = nn.Linear(hidden, opt.polarities_dim)
+        self.mean_pooling_double = PointwiseFeedForward(opt.hidden_dim * 2, opt.hidden_dim)
+        self.final_sa = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='scaled_dot_product')
+        self.final_pooler = MyPooler(opt)
+        self.dense = nn.Linear(opt.hidden_dim, opt.polarities_dim)
 
     def feature_dynamic_mask(self, text_local_indices, aspect_indices,distances_input=None):
         texts = text_local_indices.cpu().numpy() # batch_size x seq_len
@@ -145,43 +137,37 @@ class LCFS_BERT(nn.Module):
         masked_text_raw_indices = torch.from_numpy(masked_text_raw_indices)
         return masked_text_raw_indices.to(self.opt.device)
 
-    def forward(self, inputs, output_attentions = False):
+    def forward(self, inputs):
         text_bert_indices = inputs[0]
-        bert_segments_ids = inputs[1] 
+        bert_segments_ids = inputs[1]
         text_local_indices = inputs[2] # Raw text without adding aspect term
         aspect_indices = inputs[3] # Raw text of aspect
         distances = inputs[4]
         #distances = None
-        # 以上都是(16,80)
+        
+        # Embedding Layer: Glove,也可以加squeeze_embedding
+        text_global_indices = self.embed(text_bert_indices)
+        text_local_indices = self.embed(text_local_indices)
 
-        spc_out = self.bert_spc(text_bert_indices, bert_segments_ids)  # BaseModelOutputWithPoolingAndCrossAttentions
-        bert_spc_out = spc_out[0]  # (16,80,768)=last_hidden_state
-        spc_att = spc_out[-1][-1]  # ([16, 12, 80, 80])=attentions最后一个tuple (16,80,80)
-        #bert_spc_out = self.bert_g_sa(bert_spc_out)
-        #bert_spc_out = self.dropout(bert_spc_out)
-        #bert_spc_out = self.bert_g_pct(bert_spc_out)
-        #bert_spc_out = self.dropout(bert_spc_out)
-
-        bert_local_out = self.bert_local(text_local_indices)[0]  # (16,80,768)=last_hidden_state
-        #bert_local_out = self.bert_local_sa(bert_local_out)
-        #bert_local_out = self.dropout(bert_local_out)
-        #bert_local_out = self.bert_local_pct(bert_local_out)
-        #bert_local_out = self.dropout(bert_local_out)
+        # MHSA + PCT
+        text_mhsa_global = self.mhsa_global(text_global_indices)  # 看下这个atten的输出
+        text_pct_global = self.pct_global(text_mhsa_global)
+        text_mhsa_local = self.mhsa_local(text_local_indices)
+        text_pct_local = self.pct_local(text_mhsa_local)
 
         if self.opt.local_context_focus == 'cdm':
-            masked_local_text_vec = self.feature_dynamic_mask(text_local_indices, aspect_indices,distances)
-            bert_local_out = torch.mul(bert_local_out, masked_local_text_vec)
+            masked_local_text_vec = self.feature_dynamic_mask(text_local_indices, aspect_indices, distances)
+            text_local_out = torch.mul(text_pct_local, masked_local_text_vec)
 
         elif self.opt.local_context_focus == 'cdw':
-            weighted_text_local_features = self.feature_dynamic_weighted(text_local_indices, aspect_indices,distances)
-            bert_local_out = torch.mul(bert_local_out, weighted_text_local_features)
+            weighted_text_local_features = self.feature_dynamic_weighted(text_local_indices, aspect_indices, distances)
+            text_local_out = torch.mul(text_pct_local, weighted_text_local_features)
 
-        #bert_local_out = self.bert_local_sa(bert_local_out)
-        out_cat = torch.cat((bert_local_out, bert_spc_out), dim=-1)  # (16,80,1536)
-        mean_pool = self.mean_pooling_double(out_cat)  # (16,80,768)
-        self_attention_out, local_att = self.bert_sa(mean_pool)
-        pooled_out = self.bert_pooler(self_attention_out)
+        out_cat = torch.cat((text_local_out, text_pct_global), dim=-1)
+        mean_pool = self.mean_pooling_double(out_cat)
+        self_attention_out, local_att = self.final_sa(mean_pool)
+        pooled_out = self.final_pooler(self_attention_out)
         dense_out = self.dense(pooled_out)
-        if output_attentions:
-            return (dense_out,spc_att,local_att)
-        return dense_out
+        # if output_attentions:
+        #     return (dense_out,spc_att,local_att)  # spc_att=最后一个头的attention参数
+        return dense_out, local_att

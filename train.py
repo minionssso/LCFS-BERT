@@ -19,11 +19,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
-from data_utils import build_tokenizer, build_embedding_matrix, ABSADataset,Tokenizer4Pretrain
+from data_utils import build_tokenizer, build_embedding_matrix, ABSADataset, Tokenizer4Bert, Tokenizer
 
-from models import LSTM, IAN, MemNet, RAM, TD_LSTM, Cabasc, ATAE_LSTM, TNet_LF, AOA, MGAN, LCFS_BERT
+from models import LSTM, IAN, MemNet, RAM, TD_LSTM, Cabasc, ATAE_LSTM, TNet_LF, AOA, MGAN, LCFS_BERT, LCFS_GLOVE
 from models.aen import CrossEntropyLoss_LSR, AEN_BERT
 from models.bert_spc import BERT_SPC
+from models.lcfs_glove import LCFS_GLOVE
 # from models.xlnet_spc import XLNET_SPC
 
 logger = logging.getLogger()
@@ -34,21 +35,25 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 class Instructor:
     def __init__(self, opt):
         self.opt = opt
-        if 'roberta' in opt.pretrained_bert_name:
-            tokenizer = RobertaTokenizer.from_pretrained(opt.pretrained_bert_name)
-            transformer = RobertaModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
-        elif 'bert' in opt.pretrained_bert_name:
-            tokenizer = BertTokenizer.from_pretrained(opt.pretrained_bert_name)
-            transformer = BertModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
-        elif 'xlnet' in opt.pretrained_bert_name:
-            tokenizer = XLNetTokenizer.from_pretrained(opt.pretrained_bert_name)
-            transformer = XLNetModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
-        if 'bert' or 'xlnet' in opt.model_name:
-            tokenizer = Tokenizer4Pretrain(tokenizer,opt.max_seq_len)
-            self.model = opt.model_class(transformer,opt).to(opt.device)
+        # if 'roberta' in opt.pretrained_bert_name:
+        #     tokenizer = RobertaTokenizer.from_pretrained(opt.pretrained_bert_name)
+        #     transformer = RobertaModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
+        # elif 'bert' in opt.pretrained_bert_name:
+        #     tokenizer = BertTokenizer.from_pretrained(opt.pretrained_bert_name)
+        #     transformer = BertModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
+        # elif 'xlnet' in opt.pretrained_bert_name:
+        #     tokenizer = XLNetTokenizer.from_pretrained(opt.pretrained_bert_name)
+        #     transformer = XLNetModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
+        # if 'bert' or 'xlnet' in opt.model_name:
+        #     tokenizer = Tokenizer4Pretrain(tokenizer,opt.max_seq_len)
+        #     self.model = opt.model_class(transformer,opt).to(opt.device)
         # elif 'xlnet' in opt.model_name:
         #     tokenizer = Tokenizer4Pretrain(tokenizer, opt.max_seq_len)
         #     self.model = opt.model_class(bert,opt).to(opt.device)
+        if 'bert' in opt.model_name:
+            tokenizer = Tokenizer4Bert(opt.max_seq_len, opt.pretrained_bert_name)
+            bert = BertModel.from_pretrained(opt.pretrained_bert_name)
+            self.model = opt.model_class(bert, opt).to(opt.device)
         else:
             tokenizer = build_tokenizer(
                 fnames=[opt.dataset_file['train'], opt.dataset_file['test']],
@@ -58,6 +63,7 @@ class Instructor:
                 word2idx=tokenizer.word2idx,
                 embed_dim=opt.embed_dim,
                 dat_fname='{0}_{1}_embedding_matrix.dat'.format(str(opt.embed_dim), opt.dataset))
+            tokenizer = Tokenizer(tokenizer, opt.max_seq_len)
             self.model = opt.model_class(embedding_matrix, opt).to(opt.device)
 
         self.trainset = ABSADataset(opt.dataset_file['train'], tokenizer)
@@ -114,7 +120,7 @@ class Instructor:
                 optimizer.zero_grad()
 
                 inputs = [sample_batched[col].to(self.opt.device) for col in self.opt.inputs_cols]
-                outputs = self.model(inputs)
+                outputs, _ = self.model(inputs)
                 targets = sample_batched['polarity'].to(self.opt.device)
 
                 loss = criterion(outputs, targets)
@@ -191,7 +197,7 @@ class Instructor:
 def main():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='bert_spc', type=str)
+    parser.add_argument('--model_name', default='lcfs_bert', type=str)
     parser.add_argument('--dataset', default='twitter', type=str, help='twitter, restaurant, laptop')
     parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--initializer', default='xavier_uniform_', type=str)
@@ -241,6 +247,7 @@ def main():
         # 'xlnet_spc':XLNET_SPC,
         'aen_bert': AEN_BERT,
         'lcfs_bert': LCFS_BERT,
+        'lcfs_glove': LCFS_GLOVE,
         # default hyper-parameters for LCF-BERT model is as follws:
         # lr: 2e-5
         # l2: 1e-5
@@ -276,6 +283,7 @@ def main():
         'xlnet_spc': ['text_bert_indices', 'bert_segments_ids'],
         'aen_bert': ['text_raw_bert_indices', 'aspect_bert_indices'],
         'lcfs_bert': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
+        'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
     }
     initializers = {
         'xavier_uniform_': torch.nn.init.xavier_uniform_,
