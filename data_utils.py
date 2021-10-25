@@ -10,8 +10,9 @@ import torch
 from torch.utils.data import Dataset
 import networkx as nx
 import spacy
-# from transformers import BertTokenizer,XLNetTokenizer
-from pytorch_transformers import BertTokenizer,XLNetTokenizer
+from transformers import BertTokenizer,XLNetTokenizer
+# from pytorch_transformers import BertTokenizer,XLNetTokenizer
+
 
 
 def build_tokenizer(fnames, max_seq_len, dat_fname):
@@ -54,7 +55,7 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
         print('loading word vectors...')
         embedding_matrix = np.zeros((len(word2idx) + 2, embed_dim))  # idx 0 and len(word2idx)+1 are all-zeros
         fname = './glove.twitter.27B/glove.twitter.27B.' + str(embed_dim) + 'd.txt' \
-            if embed_dim != 300 else './glove.42B.300d.txt'
+            if embed_dim != 300 else './glove/glove.6B.300d.txt'
         word_vec = _load_word_vec(fname, word2idx=word2idx)
         print('building embedding_matrix:', dat_fname)
         for word, i in word2idx.items():
@@ -64,6 +65,7 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
                 embedding_matrix[i] = vec
         pickle.dump(embedding_matrix, open(dat_fname, 'wb'))
     return embedding_matrix
+
 
 # TODO 这里用int64，0.5的值算完变为 0了
 def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating='post', value=0):
@@ -81,7 +83,8 @@ def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating
 
 
 class Tokenizer(object):
-    def __init__(self, max_seq_len, lower=True):
+    def __init__(self, tokenizer, max_seq_len, lower=True):
+        self.tokenizer = tokenizer
         self.lower = lower
         self.max_seq_len = max_seq_len
         self.word2idx = {}
@@ -110,12 +113,36 @@ class Tokenizer(object):
             sequence = sequence[::-1]
         return pad_and_truncate(sequence, self.max_seq_len, padding=padding, truncating=truncating)
 
+    def tokenize(self, text, dep_dist, reverse=False, padding='post', truncating='post'):
+        sequence, distances = [], []
+        for word, dist in zip(text, dep_dist):  # 句子中单词遍历
+            sequence.append(word)
+            distances.append(dist)
+        # sequence = self.tokenizer.convert_tokens_to_ids(sequence)
+        sequence = self.tokenizer.text_to_sequence(sequence)
 
-class Tokenizer4Pretrain:
-    def __init__(self, tokenizer, max_seq_len):
-        self.tokenizer = tokenizer
-        self.cls_token = tokenizer.cls_token
-        self.sep_token = tokenizer.sep_token
+        if len(sequence) == 0:
+            sequence = [0]
+            dep_dist = [0]
+        if reverse:
+            sequence = sequence[::-1]
+            dep_dist = dep_dist[::-1]
+        sequence = pad_and_truncate(sequence, self.max_seq_len, padding=padding, truncating=truncating)
+        dep_dist = pad_and_truncate(dep_dist, self.max_seq_len, padding=padding, truncating=truncating,value=self.max_seq_len)
+
+        return sequence, dep_dist
+
+
+# class Tokenizer4Pretrain:
+#     def __init__(self, tokenizer, max_seq_len):
+#         self.tokenizer = tokenizer
+#         self.cls_token = tokenizer.cls_token
+#         self.sep_token = tokenizer.sep_token
+#         self.max_seq_len = max_seq_len
+
+class Tokenizer4Bert:
+    def __init__(self, max_seq_len, pretrained_bert_name):
+        self.tokenizer = BertTokenizer.from_pretrained(pretrained_bert_name)
         self.max_seq_len = max_seq_len
 
     def text_to_sequence(self, text, reverse=False, padding='post', truncating='post'):
@@ -128,10 +155,10 @@ class Tokenizer4Pretrain:
 
     # Group distance to aspect of an original word to its corresponding subword token
     def tokenize(self, text, dep_dist, reverse=False, padding='post', truncating='post'):
-        sequence, distances = [],[]
-        for word,dist in zip(text,dep_dist):
-            tokens = self.tokenizer.tokenize(word)
-            for jx,token in enumerate(tokens):
+        sequence, distances = [], []
+        for word, dist in zip(text, dep_dist):
+            tokens = self.tokenizer.tokenize(word)  # 看看这里是啥,有些词在Bert里面是可以继续切分的，比如arafat切分成'ara'和'##fat',所以最后sequence比text长
+            for jx, token in enumerate(tokens):
                 sequence.append(token)
                 distances.append(dist)
         sequence = self.tokenizer.convert_tokens_to_ids(sequence)
@@ -176,26 +203,24 @@ class ABSADataset(Dataset):
             aspect_in_text = torch.tensor([left_context_len.item(), (left_context_len + aspect_len - 1).item()])
             polarity = int(polarity) + 1
             sent = text_left + " " + aspect + " " + text_right
-            text_bert_indices = tokenizer.text_to_sequence(tokenizer.cls_token+' ' + sent + ' '
-                                                           +tokenizer.sep_token+' ' + aspect + " "+tokenizer.sep_token)
+            text_bert_indices = tokenizer.text_to_sequence('[CLS] ' + sent + ' [SEP] ' + aspect + ' [SEP]')
 
             bert_segments_ids = np.asarray([0] * (np.sum(text_raw_indices != 0) + 2) + [1] * (aspect_len + 1))
-            if 'Roberta' in type(tokenizer.tokenizer).__name__:
-                bert_segments_ids = np.zeros(np.sum(text_raw_indices != 0) + 2 + aspect_len + 1)
+            # if 'Roberta' in type(tokenizer.tokenizer).__name__:
+            #     bert_segments_ids = np.zeros(np.sum(text_raw_indices != 0) + 2 + aspect_len + 1)
             bert_segments_ids = pad_and_truncate(bert_segments_ids, tokenizer.max_seq_len)  # padding置零
 
-            text_raw_bert_indices = tokenizer.text_to_sequence(tokenizer.cls_token+ ' ' + text_left + " " + aspect + " " + text_right
-                                                               + " " + tokenizer.sep_token)
+            text_raw_bert_indices = tokenizer.text_to_sequence('[CLS] ' + text_left + " " + aspect + " " + text_right + ' [SEP]')
 
             # Find distance in dependency parsing tree
             raw_tokens, dist = calculate_dep_dist(sent,aspect)  # 返回 dist距离
-            raw_tokens.insert(0,tokenizer.cls_token)
+            raw_tokens.insert(0,'[CLS]')
             dist.insert(0,0)
-            raw_tokens.append(tokenizer.sep_token)
+            raw_tokens.append('[SEP]')
             dist.append(0)
 
-            _, distance_to_aspect = tokenizer.tokenize(raw_tokens, dist)
-            aspect_bert_indices = tokenizer.text_to_sequence(tokenizer.cls_token+ ' ' + aspect + " " + tokenizer.sep_token)
+            _, distance_to_aspect = tokenizer.tokenize(raw_tokens, dist)  # shape(80,)
+            aspect_bert_indices = tokenizer.text_to_sequence('[CLS] ' + aspect + ' [SEP]')
 
             data = {
                 'text_bert_indices': text_bert_indices,

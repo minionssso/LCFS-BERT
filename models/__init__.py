@@ -14,3 +14,4 @@ from models.tnet_lf import TNet_LF
 from models.aoa import AOA
 from models.mgan import MGAN
 from models.lcfs_bert import LCFS_BERT
+from models.lcfs_glove import LCFS_GLOVE

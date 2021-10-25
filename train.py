@@ -11,20 +11,20 @@ from time import strftime, localtime
 import random
 import numpy
 
-# from transformers import BertModel,XLNetModel,RobertaModel
-from pytorch_transformers import BertModel,XLNetModel,RobertaModel
+from transformers import BertModel,XLNetModel,RobertaModel
+
 
 from sklearn import metrics
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-# from transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
-from pytorch_transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
-from data_utils import build_tokenizer, build_embedding_matrix, ABSADataset,Tokenizer4Pretrain
+from transformers import XLNetTokenizer,BertTokenizer,RobertaTokenizer
+from data_utils import build_tokenizer, build_embedding_matrix, ABSADataset, Tokenizer4Bert, Tokenizer
 
-from models import LSTM, IAN, MemNet, RAM, TD_LSTM, Cabasc, ATAE_LSTM, TNet_LF, AOA, MGAN, LCFS_BERT
+from models import LSTM, IAN, MemNet, RAM, TD_LSTM, Cabasc, ATAE_LSTM, TNet_LF, AOA, MGAN, LCFS_BERT, LCFS_GLOVE
 from models.aen import CrossEntropyLoss_LSR, AEN_BERT
 from models.bert_spc import BERT_SPC
+from models.lcfs_glove import LCFS_GLOVE
 # from models.xlnet_spc import XLNET_SPC
 
 logger = logging.getLogger()
@@ -35,21 +35,25 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 class Instructor:
     def __init__(self, opt):
         self.opt = opt
-        if 'roberta' in opt.pretrained_bert_name:
-            tokenizer = RobertaTokenizer.from_pretrained(opt.pretrained_bert_name)
-            transformer = RobertaModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
-        elif 'bert' in opt.pretrained_bert_name:
-            tokenizer = BertTokenizer.from_pretrained(opt.pretrained_bert_name)
-            transformer = BertModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
-        elif 'xlnet' in opt.pretrained_bert_name:
-            tokenizer = XLNetTokenizer.from_pretrained(opt.pretrained_bert_name)
-            transformer = XLNetModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
-        if 'bert' or 'xlnet' in opt.model_name:
-            tokenizer = Tokenizer4Pretrain(tokenizer,opt.max_seq_len)
-            self.model = opt.model_class(transformer,opt).to(opt.device)
+        # if 'roberta' in opt.pretrained_bert_name:
+        #     tokenizer = RobertaTokenizer.from_pretrained(opt.pretrained_bert_name)
+        #     transformer = RobertaModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
+        # elif 'bert' in opt.pretrained_bert_name:
+        #     tokenizer = BertTokenizer.from_pretrained(opt.pretrained_bert_name)
+        #     transformer = BertModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
+        # elif 'xlnet' in opt.pretrained_bert_name:
+        #     tokenizer = XLNetTokenizer.from_pretrained(opt.pretrained_bert_name)
+        #     transformer = XLNetModel.from_pretrained(opt.pretrained_bert_name, output_attentions=True)
+        # if 'bert' or 'xlnet' in opt.model_name:
+        #     tokenizer = Tokenizer4Pretrain(tokenizer,opt.max_seq_len)
+        #     self.model = opt.model_class(transformer,opt).to(opt.device)
         # elif 'xlnet' in opt.model_name:
         #     tokenizer = Tokenizer4Pretrain(tokenizer, opt.max_seq_len)
         #     self.model = opt.model_class(bert,opt).to(opt.device)
+        if 'bert' in opt.model_name:
+            tokenizer = Tokenizer4Bert(opt.max_seq_len, opt.pretrained_bert_name)
+            bert = BertModel.from_pretrained(opt.pretrained_bert_name)
+            self.model = opt.model_class(bert, opt).to(opt.device)
         else:
             tokenizer = build_tokenizer(
                 fnames=[opt.dataset_file['train'], opt.dataset_file['test']],
@@ -59,6 +63,7 @@ class Instructor:
                 word2idx=tokenizer.word2idx,
                 embed_dim=opt.embed_dim,
                 dat_fname='{0}_{1}_embedding_matrix.dat'.format(str(opt.embed_dim), opt.dataset))
+            tokenizer = Tokenizer(tokenizer, opt.max_seq_len)
             self.model = opt.model_class(embedding_matrix, opt).to(opt.device)
 
         self.trainset = ABSADataset(opt.dataset_file['train'], tokenizer)
@@ -115,7 +120,7 @@ class Instructor:
                 optimizer.zero_grad()
 
                 inputs = [sample_batched[col].to(self.opt.device) for col in self.opt.inputs_cols]
-                outputs = self.model(inputs)
+                outputs, _ = self.model(inputs)
                 targets = sample_batched['polarity'].to(self.opt.device)
 
                 loss = criterion(outputs, targets)
@@ -193,14 +198,14 @@ def main():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='lcfs_bert', type=str)
-    parser.add_argument('--dataset', default='laptop', type=str, help='twitter, restaurant, laptop')
+    parser.add_argument('--dataset', default='twitter', type=str, help='twitter, restaurant, laptop')
     parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--initializer', default='xavier_uniform_', type=str)
     parser.add_argument('--learning_rate', default=2e-5, type=float, help='try 5e-5, 2e-5 for BERT, 1e-3 for others')
-    parser.add_argument('--dropout', default=0, type=float)
+    parser.add_argument('--dropout', default=0.1, type=float)
     parser.add_argument('--l2reg', default=0.01, type=float)
     parser.add_argument('--num_epoch', default=10, type=int, help='try larger number for non-BERT models')
-    parser.add_argument('--batch_size', default=32, type=int, help='try 16, 32, 64 for BERT models')
+    parser.add_argument('--batch_size', default=64, type=int, help='try 16, 32, 64 for BERT models')
     parser.add_argument('--log_step', default=5, type=int)
     parser.add_argument('--embed_dim', default=300, type=int)
     parser.add_argument('--hidden_dim', default=300, type=int)
@@ -210,14 +215,13 @@ def main():
     parser.add_argument('--polarities_dim', default=3, type=int)
     parser.add_argument('--hops', default=3, type=int)
     parser.add_argument('--lsr',default=False)
-    parser.add_argument('--device', default='cuda:0', type=str, help='e.g. cuda:0')
-    parser.add_argument('--seed', default=747, type=int, help='set seed for reproducibility')
+    parser.add_argument('--device', default=None, type=str, help='e.g. cuda:0')
+    parser.add_argument('--seed', default=None, type=int, help='set seed for reproducibility')
     parser.add_argument('--valset_ratio', default=0, type=float, help='set ratio between 0 and 1 for validation support')
     # The following parameters are only valid for the lcf-bert model
     parser.add_argument('--local_context_focus', default='cdm', type=str, help='local context focus mode, cdw or cdm')
     # semantic-relative-distance, see the paper of LCF-BERT model
     parser.add_argument('--SRD', default=3, type=int, help='set SRD')
-    # parser.add_argument('--output_attentions', default=True, type=bool, help='')
     opt = parser.parse_args()
 
     if opt.seed is not None:
@@ -243,6 +247,7 @@ def main():
         # 'xlnet_spc':XLNET_SPC,
         'aen_bert': AEN_BERT,
         'lcfs_bert': LCFS_BERT,
+        'lcfs_glove': LCFS_GLOVE,
         # default hyper-parameters for LCF-BERT model is as follws:
         # lr: 2e-5
         # l2: 1e-5
@@ -278,6 +283,7 @@ def main():
         'xlnet_spc': ['text_bert_indices', 'bert_segments_ids'],
         'aen_bert': ['text_raw_bert_indices', 'aspect_bert_indices'],
         'lcfs_bert': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
+        'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
     }
     initializers = {
         'xavier_uniform_': torch.nn.init.xavier_uniform_,
