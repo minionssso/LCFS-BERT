@@ -14,7 +14,6 @@ import spacy
 from pytorch_transformers import BertTokenizer,XLNetTokenizer
 
 
-
 def build_tokenizer(fnames, max_seq_len, dat_fname):
     if os.path.exists(dat_fname):
         print('loading tokenizer:', dat_fname)
@@ -104,7 +103,7 @@ class Tokenizer(object):
         self.idx2word = {}
         self.idx = 1
 
-    def fit_on_text(self, text):
+    def fit_on_text(self, text):  # 构建word2idx, idx2word
         if self.lower:
             text = text.lower()
         words = text.split()
@@ -113,8 +112,11 @@ class Tokenizer(object):
                 self.word2idx[word] = self.idx
                 self.idx2word[self.idx] = word
                 self.idx += 1
+        word2idx.insert(0, '[CLS]')
+        raw_tokens.append('[SEP]')
+        dist.append(0)
 
-    def text_to_sequence(self, text, reverse=False, padding='post', truncating='post'):
+    def text_to_sequence(self, text, reverse=False, padding='post', truncating='post'):  # 把句子str的word用id代替，且句子
         if self.lower:
             text = text.lower()
         words = text.split()
@@ -132,7 +134,11 @@ class Tokenizer(object):
             sequence.append(word)
             distances.append(dist)
         # sequence = self.tokenizer.convert_tokens_to_ids(sequence)
-        sequence = self.text_to_sequence(sequence)  # sequence是list,要先变为str
+        for ix, seq in enumerate(sequence):
+            if seq in self.word2idx.keys():
+                sequence[ix] = self.word2idx[seq]
+                # seq_id.append(self.word2idx[seq])
+        # sequence = self.text_to_sequence(sequence)  # sequence是list,要先变为str
 
         if len(sequence) == 0:
             sequence = [0]
@@ -171,7 +177,7 @@ class Tokenizer4Bert:
         sequence, distances = [], []
         for word, dist in zip(text, dep_dist):
             tokens = self.tokenizer.tokenize(word)  # 看看这里是啥,有些词在Bert里面是可以继续切分的，比如arafat切分成'ara'和'##fat',所以最后sequence比text长
-            for jx, token in enumerate(tokens):
+            for jx, token in enumerate(tokens):  # type(tokens)
                 sequence.append(token)
                 distances.append(dist)
         sequence = self.tokenizer.convert_tokens_to_ids(sequence)  # sequence是str吗
@@ -198,7 +204,7 @@ class ABSADataset(Dataset):
         for i in range(0, len(lines), 3):
             text_left, _, text_right = [s.lower().strip() for s in lines[i].partition("$T$")]
             aspect = lines[i + 1].lower().strip()
-            auxiliary_aspect = 'What is the polarity of {}'.format(aspect) # TODO
+            auxiliary_aspect = 'What is the polarity of {}'.format(aspect)  # TODO
             polarity = lines[i + 2].strip()
 
             raw_text = text_left + " " + aspect + " " + text_right
