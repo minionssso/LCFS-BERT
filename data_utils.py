@@ -79,7 +79,7 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
     return embedding_matrix
 
 
-# TODO 这里用int64，0.5的值算完变为 0了
+# TODO 这里用int64，0.5的值算完变为 0了，为什么
 def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating='post', value=0):  # TODO 为什么转int64
     x = (np.ones(maxlen) * value).astype(dtype)
     if truncating == 'pre':
