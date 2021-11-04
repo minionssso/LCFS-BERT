@@ -53,7 +53,9 @@ class LCFS_GLOVE(nn.Module):
         self.embed = nn.Embedding.from_pretrained(torch.tensor(embedding_matrix, dtype=torch.float))
         self.squeeze_embedding = SqueezeEmbedding()
 
-        self.mhsa_global = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='mlp')
+        # self.mhsa_global = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='mlp')
+        self.mhsa_global = Attention(opt.embed_dim, out_dim=opt.hidden_dim, n_head=8, score_function='mlp', dropout=opt.dropout)
+
         self.pct_global = PointwiseFeedForward(opt.hidden_dim, dropout=opt.dropout)
         self.mhsa_local = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='mlp')
         self.pct_local = PointwiseFeedForward(opt.hidden_dim, dropout=opt.dropout)
@@ -141,7 +143,7 @@ class LCFS_GLOVE(nn.Module):
     def forward(self, inputs):
         text_bert_indices = inputs[0]
         bert_segments_ids = inputs[1]
-        text_local_indices = inputs[2] # Raw text without adding aspect term
+        text_local_indices = inputs[2]  # Raw text without adding aspect term
         aspect_indices = inputs[3] # Raw text of aspect
         distances = inputs[4]
         #distances = None
@@ -149,11 +151,12 @@ class LCFS_GLOVE(nn.Module):
         # Embedding Layer: Glove,也可以加squeeze_embedding
         text_global_indices = self.embed(text_bert_indices)
         text_local_indices = self.embed(text_local_indices)
+        aspect_indices = self.embed(aspect_indices)
 
         # MHSA + PCT
-        text_mhsa_global = self.mhsa_global(text_global_indices)  # 看下这个atten的输出
+        text_mhsa_global = self.mhsa_global(text_global_indices, text_global_indices)  # 看下这个atten的输出
         text_pct_global = self.pct_global(text_mhsa_global)
-        text_mhsa_local = self.mhsa_local(text_local_indices)
+        text_mhsa_local = self.mhsa_local(text_local_indices, aspect_indices)
         text_pct_local = self.pct_local(text_mhsa_local)
 
         if self.opt.local_context_focus == 'cdm':

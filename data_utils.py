@@ -65,8 +65,8 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
         print('loading word vectors...')
         embedding_matrix = np.zeros((len(word2idx) + 2, embed_dim))  # idx 0 and len(word2idx)+1 are all-zeros
         fname = './glove.twitter.27B/glove.twitter.27B.' + str(embed_dim) + 'd.txt' \
-            if embed_dim != 300 else './glove/glove.6B.300d.txt'
-            # if embed_dim != 300 else './glove/glove.840B.300d.txt'
+            if embed_dim != 300 else './glove/glove.840B.300d.txt'
+        # if embed_dim != 300 else './glove/glove.6B.300d.txt'
         # word_vec = _load_word_vec(fname, word2idx=word2idx)
         word_vec = _load_word_vec(fname, word2idx=word2idx, embed_dim=embed_dim)
         print('building embedding_matrix:', dat_fname)
@@ -130,14 +130,16 @@ class Tokenizer(object):
         return pad_and_truncate(sequence, self.max_seq_len, padding=padding, truncating=truncating)
 
     def tokenize(self, text, dep_dist, reverse=False, padding='post', truncating='post'):
-        sequence, distances = [], []
+        sequence, distances = [], []  # text和_dist已经有了，为什么要这两个list
         for word, dist in zip(text, dep_dist):  # 句子中单词遍历
             sequence.append(word)
             distances.append(dist)
-        # sequence = self.tokenizer.convert_tokens_to_ids(sequence)
-        for ix, seq in enumerate(sequence):
-            if seq in self.word2idx.keys():
-                sequence[ix] = self.word2idx[seq]
+        # sequence = self.tokenizer.convert_tokens_to_ids(sequence)  # 把词转id
+        unknownidx = len(self.word2idx)+1  # 4584
+        sequence = [self.word2idx[seq] if seq in self.word2idx else unknownidx for seq in sequence]
+        # for ix, seq in enumerate(sequence):
+        #     if seq in self.word2idx.keys():
+        #         sequence[ix] = self.word2idx[seq]
                 # seq_id.append(self.word2idx[seq])
         # sequence = self.text_to_sequence(sequence)  # sequence是list,要先变为str
 
