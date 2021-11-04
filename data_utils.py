@@ -80,7 +80,7 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
 
 
 # TODO 这里用int64，0.5的值算完变为 0了
-def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating='post', value=0):
+def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating='post', value=0):  # TODO 为什么转int64
     x = (np.ones(maxlen) * value).astype(dtype)
     if truncating == 'pre':
         trunc = sequence[-maxlen:]
@@ -149,8 +149,8 @@ class Tokenizer(object):
         if reverse:
             sequence = sequence[::-1]
             dep_dist = dep_dist[::-1]
-        sequence = pad_and_truncate(sequence, self.max_seq_len, padding=padding, truncating=truncating)
-        dep_dist = pad_and_truncate(dep_dist, self.max_seq_len, padding=padding, truncating=truncating,value=self.max_seq_len)
+        sequence = pad_and_truncate(sequence, self.max_seq_len, padding=padding, truncating=truncating)  # TODO 后面用0填充,下次循环填充
+        dep_dist = pad_and_truncate(dep_dist, self.max_seq_len, padding=padding, truncating=truncating,value=self.max_seq_len)  # 后面用最大值填充，表示距离很远
 
         return sequence, dep_dist
 
