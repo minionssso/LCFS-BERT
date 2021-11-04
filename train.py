@@ -198,7 +198,7 @@ class Instructor:
 def main():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='lcfs_glove', type=str)  # lcfs_bert
+    parser.add_argument('--model_name', default='lcfs_bert', type=str)  # lcfs_bert
     parser.add_argument('--dataset', default='restaurant', type=str, help='twitter, restaurant, laptop')
     parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--initializer', default='xavier_uniform_', type=str)
@@ -216,7 +216,8 @@ def main():
     parser.add_argument('--polarities_dim', default=3, type=int)
     parser.add_argument('--hops', default=3, type=int)
     parser.add_argument('--lsr',default=False)
-    parser.add_argument('--device', default='cuda:0', type=str, help='e.g. cuda:0')
+    # parser.add_argument('--device', default='cuda:0', type=str, help='e.g. cuda:0')
+    parser.add_argument('--device', default=None, type=str, help='e.g. cuda:0')
     parser.add_argument('--seed', default=747, type=int, help='set seed for reproducibility')
     parser.add_argument('--valset_ratio', default=0, type=float, help='set ratio between 0 and 1 for validation support')
     # The following parameters are only valid for the lcf-bert model

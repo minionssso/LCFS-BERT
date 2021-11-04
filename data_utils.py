@@ -65,7 +65,8 @@ def build_embedding_matrix(word2idx, embed_dim, dat_fname):
         print('loading word vectors...')
         embedding_matrix = np.zeros((len(word2idx) + 2, embed_dim))  # idx 0 and len(word2idx)+1 are all-zeros
         fname = './glove.twitter.27B/glove.twitter.27B.' + str(embed_dim) + 'd.txt' \
-            if embed_dim != 300 else './glove/glove.840B.300d.txt'
+            if embed_dim != 300 else './glove/glove.6B.300d.txt'
+            # if embed_dim != 300 else './glove/glove.840B.300d.txt'
         # word_vec = _load_word_vec(fname, word2idx=word2idx)
         word_vec = _load_word_vec(fname, word2idx=word2idx, embed_dim=embed_dim)
         print('building embedding_matrix:', dat_fname)
@@ -103,24 +104,24 @@ class Tokenizer(object):
         self.idx2word = {}
         self.idx = 1
 
-    def fit_on_text(self, text):  # 构建word2idx, idx2word
+    def fit_on_text(self, text):  # 构建 word2idx, idx2word（没有CLS、SEP
         if self.lower:
             text = text.lower()
         words = text.split()
+        # unknownidx = len(self.word2idx)+1
         for word in words:
             if word not in self.word2idx:
                 self.word2idx[word] = self.idx
                 self.idx2word[self.idx] = word
                 self.idx += 1
-        word2idx.insert(0, '[CLS]')
-        raw_tokens.append('[SEP]')
-        dist.append(0)
+                # self.word2idx[word] = unknownidx
+
 
     def text_to_sequence(self, text, reverse=False, padding='post', truncating='post'):  # 把句子str的word用id代替，且句子
         if self.lower:
             text = text.lower()
         words = text.split()
-        unknownidx = len(self.word2idx)+1
+        unknownidx = len(self.word2idx)+1  # 4584
         sequence = [self.word2idx[w] if w in self.word2idx else unknownidx for w in words]
         if len(sequence) == 0:
             sequence = [0]
@@ -232,13 +233,13 @@ class ABSADataset(Dataset):
             text_raw_bert_indices = tokenizer.text_to_sequence('[CLS] ' + text_left + " " + aspect + " " + text_right + ' [SEP]')
 
             # Find distance in dependency parsing tree
-            raw_tokens, dist = calculate_dep_dist(sent,aspect)  # 返回 dist距离
+            raw_tokens, dist = calculate_dep_dist(sent,aspect)  # 返回asp与上下文词的距离
             raw_tokens.insert(0,'[CLS]')
             dist.insert(0,0)
             raw_tokens.append('[SEP]')
             dist.append(0)
 
-            _, distance_to_aspect = tokenizer.tokenize(raw_tokens, dist)  # shape(80,)
+            _, distance_to_aspect = tokenizer.tokenize(raw_tokens, dist)  # distance_to_aspect就是依赖树距离的输入，shape(80,)
             aspect_bert_indices = tokenizer.text_to_sequence('[CLS] ' + aspect + ' [SEP]')
 
             data = {
@@ -269,9 +270,9 @@ class ABSADataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-nlp = spacy.load("en_core_web_sm")  # 加载语言模型
+nlp = spacy.load("en_core_web_sm")  # 得到句法依赖树的工具
 def calculate_dep_dist(sentence,aspect):
-    terms = [a.lower() for a in aspect.split()]
+    terms = [a.lower() for a in aspect.split()]  # aspect多词组成的继续划分
     doc = nlp(sentence)
     # Load spacy's dependency tree into a networkx graph
     edges = []
@@ -283,7 +284,7 @@ def calculate_dep_dist(sentence,aspect):
             term_ids[cnt] = token.i  # 把aspect在句子中的位置存于term_ids中
             cnt += 1
 
-        for child in token.children:  # 句法上的直接子节点
+        for child in token.children:  # token和边child的关系
             edges.append(('{}_{}'.format(token.lower_,token.i),
                           '{}_{}'.format(child.lower_,child.i)))
 
