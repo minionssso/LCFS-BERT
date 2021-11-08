@@ -148,6 +148,7 @@ class LCFS_GLOVE(nn.Module):
         return masked_text_raw_indices.to(self.opt.device)
 
     def forward(self, inputs):
+        # ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
         text_bert_indices = inputs[0]
         bert_segments_ids = inputs[1]
         text_local_indices = inputs[2]  # Raw text without adding aspect term

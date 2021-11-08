@@ -287,7 +287,8 @@ def main():
         'xlnet_spc': ['text_bert_indices', 'bert_segments_ids'],
         'aen_bert': ['text_raw_bert_indices', 'aspect_bert_indices'],
         'lcfs_bert': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
-        'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
+        # 'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
+        'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_indices', 'aspect_indices','dep_distance_to_aspect'],
     }
     initializers = {
         'xavier_uniform_': torch.nn.init.xavier_uniform_,
