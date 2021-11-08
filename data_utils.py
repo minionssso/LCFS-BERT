@@ -150,7 +150,7 @@ class Tokenizer(object):
             sequence = sequence[::-1]
             dep_dist = dep_dist[::-1]
         sequence = pad_and_truncate(sequence, self.max_seq_len, padding=padding, truncating=truncating)  # TODO 后面用0填充,下次循环填充
-        dep_dist = pad_and_truncate(dep_dist, self.max_seq_len, padding=padding, truncating=truncating,value=self.max_seq_len)  # 后面用最大值填充，表示距离很远
+        dep_dist = pad_and_truncate(dep_dist, self.max_seq_len, padding=padding, truncating=truncating, value=self.max_seq_len)  # 后面用最大值填充，表示距离很远
 
         return sequence, dep_dist
 

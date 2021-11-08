@@ -9,6 +9,7 @@ import copy
 import numpy as np
 from layers.squeeze_embedding import SqueezeEmbedding
 from layers.attention import Attention, NoQueryAttention
+from layers.dynamic_rnn import DynamicLSTM
 
 # from layers.point_wise_feed_forward import PositionwiseFeedForward
 # from transformers.models.bert.modeling_bert import BertPooler
@@ -58,6 +59,7 @@ class LCFS_GLOVE(nn.Module):
         self.opt = opt
         self.embed = nn.Embedding.from_pretrained(torch.tensor(embedding_matrix, dtype=torch.float))
         self.squeeze_embedding = SqueezeEmbedding()
+        self.lstm = DynamicLSTM(opt.embed_dim, opt.hidden_dim, num_layers=1, batch_first=True)
 
         # self.mhsa_global = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='mlp')
         self.mhsa_global = Attention(opt.embed_dim, out_dim=opt.hidden_dim, n_head=8, score_function='mlp', dropout=opt.dropout)
@@ -160,11 +162,13 @@ class LCFS_GLOVE(nn.Module):
         text_global_indices = self.embed(text_bert_indices)
         text_local_indices = self.embed(text_local_indices)
         aspect_indices = self.embed(aspect_indices)
-
+        # BiLSTM
+        text_gobal_lstm = self.lstm(text_global_indices)
+        text_local_lstm = self.lstm(text_local_indices)
         # MHSA + PCT
-        text_mhsa_global, _ = self.mhsa_global(text_global_indices, text_global_indices)  # 看下这个atten的输出
+        text_mhsa_global, _ = self.mhsa_global(text_gobal_lstm, text_gobal_lstm)  # 看下这个atten的输出
         text_pct_global = self.pct_global(text_mhsa_global)
-        text_mhsa_local, _ = self.mhsa_local(text_local_indices, aspect_indices)
+        text_mhsa_local, _ = self.mhsa_local(text_local_lstm, aspect_indices)
         text_pct_local = self.pct_local(text_mhsa_local)
 
         if self.opt.local_context_focus == 'cdm':

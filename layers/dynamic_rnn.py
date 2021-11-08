@@ -10,7 +10,7 @@ import numpy as np
 
 class DynamicLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, bias=True, batch_first=True, dropout=0,
-                 bidirectional=False, only_use_last_hidden_state=False, rnn_type = 'LSTM'):
+                 bidirectional=False, only_use_last_hidden_state=False, rnn_type='LSTM'):
         """
         LSTM which can hold variable length sequence, use like TensorFlow's RNN(input, length...).
 
