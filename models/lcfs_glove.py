@@ -161,12 +161,15 @@ class LCFS_GLOVE(nn.Module):
         # len
         global_len = torch.sum(text_bert_indices != 0, dim=-1)
         local_len = torch.sum(text_local_indices != 0, dim=-1)
+        asp_len = torch.sum(aspect_indices != 0, dim=-1)
         # Embedding Layer: Glove,也可以加squeeze_embedding
         text_global_indices = self.embed(text_bert_indices)
         text_global_indices = self.squeeze_embedding(text_global_indices, global_len)
         text_local_indices = self.embed(text_local_indices)
         text_local_indices = self.squeeze_embedding(text_local_indices, local_len)
         aspect_indices = self.embed(aspect_indices)
+        aspect_indices = self.squeeze_embedding(aspect_indices, asp_len)
+
         # BiLSTM
         text_gobal_lstm, (_, _) = self.lstm(text_global_indices, global_len)
         text_local_lstm, (_, _) = self.lstm(text_local_indices, local_len)
