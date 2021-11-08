@@ -83,7 +83,7 @@ class LCFS_GLOVE(nn.Module):
         if distances_input is not None:
             distances_input = distances_input.cpu().numpy()
         mask_len = self.opt.SRD
-        masked_text_raw_indices = np.ones((text_local_indices.size(0), self.opt.max_seq_len, self.opt.hidden_dim),
+        masked_text_raw_indices = np.ones((text_local_indices.size(0), text_local_indices.size(1), self.opt.hidden_dim),
                                           dtype=np.float32) # batch_size x seq_len x hidden size
         for text_i, asp_i in zip(range(len(texts)), range(len(asps))): # For each sample
             if distances_input is None:
@@ -164,10 +164,10 @@ class LCFS_GLOVE(nn.Module):
         asp_len = torch.sum(aspect_indices != 0, dim=-1)
         # Embedding Layer: Glove,也可以加squeeze_embedding
         text_global_indices = self.embed(text_bert_indices)
-        text_global_indices = self.squeeze_embedding(text_global_indices, global_len)
         text_local_indices = self.embed(text_local_indices)
-        text_local_indices = self.squeeze_embedding(text_local_indices, local_len)
         aspect_indices = self.embed(aspect_indices)
+        text_global_indices = self.squeeze_embedding(text_global_indices, global_len)
+        text_local_indices = self.squeeze_embedding(text_local_indices, local_len)
         aspect_indices = self.squeeze_embedding(aspect_indices, asp_len)
 
         # BiLSTM
@@ -176,7 +176,7 @@ class LCFS_GLOVE(nn.Module):
         # MHSA + PCT
         text_mhsa_global, _ = self.mhsa_global(text_gobal_lstm, text_gobal_lstm)  # 看下这个atten的输出
         text_pct_global = self.pct_global(text_mhsa_global)
-        text_mhsa_local, _ = self.mhsa_local(text_local_lstm, aspect_indices)
+        text_mhsa_local, _ = self.mhsa_local(text_local_lstm, text_local_lstm)
         text_pct_local = self.pct_local(text_mhsa_local)
 
         if self.opt.local_context_focus == 'cdm':
@@ -184,10 +184,16 @@ class LCFS_GLOVE(nn.Module):
             text_local_out = torch.mul(text_pct_local, masked_local_text_vec)
 
         elif self.opt.local_context_focus == 'cdw':
-            weighted_text_local_features = self.feature_dynamic_weighted(text_local_indices, aspect_indices, distances)
-            text_local_out = torch.mul(text_pct_local, weighted_text_local_features)
+            weighted_local_text_vec = self.feature_dynamic_weighted(text_local_indices, aspect_indices, distances)
+            text_local_out = torch.mul(text_pct_local, weighted_local_text_vec)
 
-        out_cat = torch.cat((text_local_out, text_pct_global), dim=-1)
+        # mean
+        global_len = torch.tensor(global_len, dtype=torch.float).to(self.opt.device)
+        local_len = torch.tensor(local_len, dtype=torch.float).to(self.opt.device)
+        global_mean = torch.div(torch.sum(text_pct_global, dim=1), global_len.view(global_len.size(0), 1))
+        local_mean = torch.div(torch.sum(text_local_out, dim=1), local_len.view(local_len.size(0), 1))
+
+        out_cat = torch.cat((global_mean, local_mean), dim=-1)
         mean_pool = self.mean_pooling_double(out_cat)
         self_attention_out, local_att = self.final_sa(mean_pool)
         pooled_out = self.final_pooler(self_attention_out)
