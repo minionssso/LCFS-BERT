@@ -150,21 +150,26 @@ class LCFS_GLOVE(nn.Module):
         return masked_text_raw_indices.to(self.opt.device)
 
     def forward(self, inputs):
-        # ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
+        # ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices',
+        # 'aspect_bert_indices','dep_distance_to_aspect'],
         text_bert_indices = inputs[0]
-        bert_segments_ids = inputs[1]
+        # bert_segments_ids = inputs[1]
         text_local_indices = inputs[2]  # Raw text without adding aspect term
-        aspect_indices = inputs[3] # Raw text of aspect
+        aspect_indices = inputs[3]  # Raw text of aspect
         distances = inputs[4]
-        #distances = None
-        
+        # distances = None
+        # len
+        global_len = torch.sum(text_bert_indices != 0, dim=-1)
+        local_len = torch.sum(text_local_indices != 0, dim=-1)
         # Embedding Layer: Glove,也可以加squeeze_embedding
         text_global_indices = self.embed(text_bert_indices)
+        text_global_indices = self.squeeze_embedding(text_global_indices, global_len)
         text_local_indices = self.embed(text_local_indices)
+        text_local_indices = self.squeeze_embedding(text_local_indices, local_len)
         aspect_indices = self.embed(aspect_indices)
         # BiLSTM
-        text_gobal_lstm = self.lstm(text_global_indices)
-        text_local_lstm = self.lstm(text_local_indices)
+        text_gobal_lstm, (_, _) = self.lstm(text_global_indices, global_len)
+        text_local_lstm, (_, _) = self.lstm(text_local_indices, local_len)
         # MHSA + PCT
         text_mhsa_global, _ = self.mhsa_global(text_gobal_lstm, text_gobal_lstm)  # 看下这个atten的输出
         text_pct_global = self.pct_global(text_mhsa_global)
