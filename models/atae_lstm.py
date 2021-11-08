@@ -21,6 +21,7 @@ class ATAE_LSTM(nn.Module):
         self.dense = nn.Linear(opt.hidden_dim, opt.polarities_dim)
 
     def forward(self, inputs):
+        #  'atae_lstm': ['text_raw_indices', 'aspect_indices'],
         text_raw_indices, aspect_indices = inputs[0], inputs[1]
         x_len = torch.sum(text_raw_indices != 0, dim=-1)
         x_len_max = torch.max(x_len)

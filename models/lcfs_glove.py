@@ -8,7 +8,7 @@ import torch.nn as nn
 import copy
 import numpy as np
 from layers.squeeze_embedding import SqueezeEmbedding
-from layers.attention import Attention
+from layers.attention import Attention, NoQueryAttention
 
 # from layers.point_wise_feed_forward import PositionwiseFeedForward
 # from transformers.models.bert.modeling_bert import BertPooler
@@ -43,6 +43,12 @@ class PointwiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.relu = nn.ReLU()
 
+    def forward(self, x):
+        output = self.relu(self.w_1(x.transpose(1, 2)))
+        output = self.w_2(output).transpose(2, 1)
+        output = self.dropout(output)
+        return output
+
 
 class LCFS_GLOVE(nn.Module):
     def __init__(self, embedding_matrix, opt):
@@ -64,7 +70,8 @@ class LCFS_GLOVE(nn.Module):
 
         # self.mean_pooling_double = nn.Linear(hidden * 2, hidden)
         self.mean_pooling_double = PointwiseFeedForward(opt.hidden_dim * 2, opt.hidden_dim)
-        self.final_sa = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='scaled_dot_product')
+        # self.final_sa = Attention(embed_dim=opt.embed_dim, n_head=8, score_function='scaled_dot_product')
+        self.final_sa = NoQueryAttention(embed_dim=opt.embed_dim, n_head=8)
         self.final_pooler = MyPooler(opt)
         self.dense = nn.Linear(opt.hidden_dim, opt.polarities_dim)
 
@@ -74,7 +81,7 @@ class LCFS_GLOVE(nn.Module):
         if distances_input is not None:
             distances_input = distances_input.cpu().numpy()
         mask_len = self.opt.SRD
-        masked_text_raw_indices = np.ones((text_local_indices.size(0), self.opt.max_seq_len, self.hidden),
+        masked_text_raw_indices = np.ones((text_local_indices.size(0), self.opt.max_seq_len, self.opt.hidden_dim),
                                           dtype=np.float32) # batch_size x seq_len x hidden size
         for text_i, asp_i in zip(range(len(texts)), range(len(asps))): # For each sample
             if distances_input is None:
@@ -89,14 +96,14 @@ class LCFS_GLOVE(nn.Module):
                 else:
                     mask_begin = 0
                 for i in range(mask_begin): # Masking to the left
-                    masked_text_raw_indices[text_i][i] = np.zeros((self.hidden), dtype=np.float)
+                    masked_text_raw_indices[text_i][i] = np.zeros((self.opt.hidden_dim), dtype=np.float)
                 for j in range(asp_begin + asp_len + mask_len, self.opt.max_seq_len): # Masking to the right
-                    masked_text_raw_indices[text_i][j] = np.zeros((self.hidden), dtype=np.float)
+                    masked_text_raw_indices[text_i][j] = np.zeros((self.opt.hidden_dim), dtype=np.float)
             else:
                 distances_i = distances_input[text_i]
                 for i,dist in enumerate(distances_i):
                     if dist > mask_len:
-                        masked_text_raw_indices[text_i][i] = np.zeros((self.hidden), dtype=np.float)
+                        masked_text_raw_indices[text_i][i] = np.zeros((self.opt.hidden_dim), dtype=np.float)
 
         masked_text_raw_indices = torch.from_numpy(masked_text_raw_indices)
         return masked_text_raw_indices.to(self.opt.device)
@@ -154,9 +161,9 @@ class LCFS_GLOVE(nn.Module):
         aspect_indices = self.embed(aspect_indices)
 
         # MHSA + PCT
-        text_mhsa_global = self.mhsa_global(text_global_indices, text_global_indices)  # 看下这个atten的输出
+        text_mhsa_global, _ = self.mhsa_global(text_global_indices, text_global_indices)  # 看下这个atten的输出
         text_pct_global = self.pct_global(text_mhsa_global)
-        text_mhsa_local = self.mhsa_local(text_local_indices, aspect_indices)
+        text_mhsa_local, _ = self.mhsa_local(text_local_indices, aspect_indices)
         text_pct_local = self.pct_local(text_mhsa_local)
 
         if self.opt.local_context_focus == 'cdm':

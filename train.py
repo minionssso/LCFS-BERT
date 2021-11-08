@@ -122,6 +122,7 @@ class Instructor:
 
                 inputs = [sample_batched[col].to(self.opt.device) for col in self.opt.inputs_cols]
                 outputs, _ = self.model(inputs)
+                # outputs = self.model(inputs)
                 targets = sample_batched['polarity'].to(self.opt.device)
 
                 loss = criterion(outputs, targets)
@@ -159,7 +160,8 @@ class Instructor:
             for t_batch, t_sample_batched in enumerate(data_loader):
                 t_inputs = [t_sample_batched[col].to(self.opt.device) for col in self.opt.inputs_cols]
                 t_targets = t_sample_batched['polarity'].to(self.opt.device)
-                t_outputs = self.model(t_inputs)
+                t_outputs, _ = self.model(t_inputs)  # (64,3) (512,1,80)
+                # t_outputs = self.model(t_inputs)  # (64,3) (512,1,80)
 
                 n_correct += (torch.argmax(t_outputs, -1) == t_targets).sum().item()
                 n_total += len(t_outputs)
@@ -202,10 +204,10 @@ def main():
     parser.add_argument('--dataset', default='restaurant', type=str, help='twitter, restaurant, laptop')
     parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--initializer', default='xavier_uniform_', type=str)
-    parser.add_argument('--learning_rate', default=2e-5, type=float, help='try 5e-5, 2e-5 for BERT, 1e-3 for others')
-    parser.add_argument('--dropout', default=0.1, type=float)
-    parser.add_argument('--l2reg', default=0.01, type=float)
-    parser.add_argument('--num_epoch', default=10, type=int, help='try larger number for non-BERT models')
+    parser.add_argument('--learning_rate', default=1e-3, type=float, help='try 5e-5, 2e-5 for BERT, 1e-3 for others')  # 2e-5好
+    parser.add_argument('--dropout', default=0, type=float)
+    parser.add_argument('--l2reg', default=1e-5, type=float)
+    parser.add_argument('--num_epoch', default=50, type=int, help='try larger number for non-BERT models')
     parser.add_argument('--batch_size', default=64, type=int, help='try 16, 32, 64 for BERT models')
     parser.add_argument('--log_step', default=5, type=int)
     parser.add_argument('--embed_dim', default=300, type=int)
@@ -215,9 +217,9 @@ def main():
     parser.add_argument('--max_seq_len', default=80, type=int)
     parser.add_argument('--polarities_dim', default=3, type=int)
     parser.add_argument('--hops', default=3, type=int)
-    parser.add_argument('--lsr',default=False)
-    # parser.add_argument('--device', default='cuda:0', type=str, help='e.g. cuda:0')
-    parser.add_argument('--device', default=None, type=str, help='e.g. cuda:0')
+    parser.add_argument('--lsr',default=True)
+    parser.add_argument('--device', default='cuda:0', type=str, help='e.g. cuda:0')
+    # parser.add_argument('--device', default=None, type=str, help='e.g. cuda:0')
     parser.add_argument('--seed', default=747, type=int, help='set seed for reproducibility')
     parser.add_argument('--valset_ratio', default=0, type=float, help='set ratio between 0 and 1 for validation support')
     # The following parameters are only valid for the lcf-bert model
