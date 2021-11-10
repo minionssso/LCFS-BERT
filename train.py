@@ -202,12 +202,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='lcfs_glove', type=str)  # lcfs_bert
     parser.add_argument('--dataset', default='restaurant', type=str, help='twitter, restaurant, laptop')
+    parser.add_argument('--cycle', default=True, type=bool)
     parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--initializer', default='xavier_uniform_', type=str)
     parser.add_argument('--learning_rate', default=1e-3, type=float, help='try 5e-5, 2e-5 for BERT, 1e-3 for others')  # 2e-5好
     parser.add_argument('--dropout', default=0, type=float)
-    parser.add_argument('--l2reg', default=1e-5, type=float)
-    parser.add_argument('--num_epoch', default=50, type=int, help='try larger number for non-BERT models')
+    parser.add_argument('--l2reg', default=1e-5, type=float)  # 1e-5
+    parser.add_argument('--num_epoch', default=10, type=int, help='try larger number for non-BERT models')
     parser.add_argument('--batch_size', default=64, type=int, help='try 16, 32, 64 for BERT models')
     parser.add_argument('--log_step', default=5, type=int)
     parser.add_argument('--embed_dim', default=300, type=int)
@@ -287,8 +288,8 @@ def main():
         'xlnet_spc': ['text_bert_indices', 'bert_segments_ids'],
         'aen_bert': ['text_raw_bert_indices', 'aspect_bert_indices'],
         'lcfs_bert': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
-        # 'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
-        'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_indices', 'aspect_indices','dep_distance_to_aspect'],
+        'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_bert_indices', 'aspect_bert_indices','dep_distance_to_aspect'],
+        # 'lcfs_glove': ['text_bert_indices', 'bert_segments_ids', 'text_raw_indices', 'aspect_indices','dep_distance_to_aspect'],
     }
     initializers = {
         'xavier_uniform_': torch.nn.init.xavier_uniform_,

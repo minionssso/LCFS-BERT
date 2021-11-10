@@ -102,7 +102,7 @@ class LCFS_GLOVE(nn.Module):
                 for j in range(asp_begin + asp_len + mask_len, self.opt.max_seq_len): # Masking to the right
                     masked_text_raw_indices[text_i][j] = np.zeros((self.opt.hidden_dim), dtype=np.float)
             else:
-                distances_i = distances_input[text_i]
+                distances_i = distances_input[text_i][:len(texts[1])]
                 for i,dist in enumerate(distances_i):
                     if dist > mask_len:
                         masked_text_raw_indices[text_i][i] = np.zeros((self.opt.hidden_dim), dtype=np.float)
@@ -193,7 +193,7 @@ class LCFS_GLOVE(nn.Module):
         global_mean = torch.div(torch.sum(text_pct_global, dim=1), global_len.view(global_len.size(0), 1))
         local_mean = torch.div(torch.sum(text_local_out, dim=1), local_len.view(local_len.size(0), 1))
 
-        out_cat = torch.cat((global_mean, local_mean), dim=-1)
+        out_cat = torch.cat((global_mean, local_mean), dim=-1).unsqueeze(1)
         mean_pool = self.mean_pooling_double(out_cat)
         self_attention_out, local_att = self.final_sa(mean_pool)
         pooled_out = self.final_pooler(self_attention_out)

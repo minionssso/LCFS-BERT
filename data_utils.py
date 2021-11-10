@@ -13,6 +13,7 @@ import spacy
 # from transformers import BertTokenizer,XLNetTokenizer
 from pytorch_transformers import BertTokenizer,XLNetTokenizer
 
+cycle = False  # 是否循环填充
 
 def build_tokenizer(fnames, max_seq_len, dat_fname):
     if os.path.exists(dat_fname):
@@ -93,6 +94,25 @@ def pad_and_truncate(sequence, maxlen, dtype='int64', padding='post', truncating
         x[-len(trunc):] = trunc
     return x
 
+# 循环填充
+def pad_and_truncate_cycle(sequence, maxlen, dtype='int64', padding='post', truncating='post', value=0):  # TODO 为什么转int64
+    x = []
+    if truncating == 'pre':
+        trunc = sequence[-maxlen:]
+    else:
+        trunc = sequence[:maxlen]
+    trunc = np.asarray(trunc, dtype=dtype)
+    while len(x) < maxlen:
+        x.extend(trunc)
+    # for i in range(10):
+    #     if len(x) < maxlen:
+    #         x.extend(trunc)
+    if padding == 'post':
+        x = x[:maxlen]
+    else:
+        x[-len(trunc):] = trunc
+    x = np.asarray(x, dtype=dtype)
+    return x
 
 # 非BERT模型用此Tokenizer
 class Tokenizer(object):
@@ -116,7 +136,20 @@ class Tokenizer(object):
                 self.idx += 1
                 # self.word2idx[word] = unknownidx
 
+    # 循环填充
+    def text_to_sequence_cycle(self, text, reverse=False, padding='post', truncating='post'):  # 把句子str的word用id代替，且句子
+        if self.lower:
+            text = text.lower()
+        words = text.split()
+        unknownidx = len(self.word2idx)+1  # 4584
+        sequence = [self.word2idx[w] if w in self.word2idx else unknownidx for w in words]
+        if len(sequence) == 0:
+            sequence = [0]
+        if reverse:
+            sequence = sequence[::-1]
+        return pad_and_truncate_cycle(sequence, self.max_seq_len, padding=padding, truncating=truncating)
 
+    # 正常
     def text_to_sequence(self, text, reverse=False, padding='post', truncating='post'):  # 把句子str的word用id代替，且句子
         if self.lower:
             text = text.lower()
@@ -149,8 +182,16 @@ class Tokenizer(object):
         if reverse:
             sequence = sequence[::-1]
             dep_dist = dep_dist[::-1]
-        sequence = pad_and_truncate(sequence, self.max_seq_len, padding=padding, truncating=truncating)  # TODO 后面用0填充,下次循环填充
-        dep_dist = pad_and_truncate(dep_dist, self.max_seq_len, padding=padding, truncating=truncating, value=self.max_seq_len)  # 后面用最大值填充，表示距离很远
+        if cycle:
+            sequence = pad_and_truncate_cycle(sequence, self.max_seq_len, padding=padding,
+                                              truncating=truncating)  # 循环填充
+            dep_dist = pad_and_truncate_cycle(dep_dist, self.max_seq_len, padding=padding, truncating=truncating,
+                                              value=self.max_seq_len)  # 后面用最大值填充，表示距离很远
+        else:
+            sequence = pad_and_truncate(sequence, self.max_seq_len, padding=padding,
+                                        truncating=truncating)  # 0填充
+            dep_dist = pad_and_truncate(dep_dist, self.max_seq_len, padding=padding, truncating=truncating,
+                                        value=self.max_seq_len)  # 后面用最大值填充，表示距离很远
 
         return sequence, dep_dist
 
@@ -207,7 +248,7 @@ class ABSADataset(Dataset):
         for i in range(0, len(lines), 3):
             text_left, _, text_right = [s.lower().strip() for s in lines[i].partition("$T$")]
             aspect = lines[i + 1].lower().strip()
-            auxiliary_aspect = 'What is the polarity of {}'.format(aspect)  # TODO
+            auxiliary_aspect = 'What is the polarity of {}'.format(aspect)  # 这是啥
             polarity = lines[i + 2].strip()
 
             raw_text = text_left + " " + aspect + " " + text_right
@@ -217,7 +258,10 @@ class ABSADataset(Dataset):
             text_left_with_aspect_indices = tokenizer.text_to_sequence(text_left + " " + aspect)
             text_right_indices = tokenizer.text_to_sequence(text_right, reverse=True)
             text_right_with_aspect_indices = tokenizer.text_to_sequence(" " + aspect + " " + text_right, reverse=True)
-            aspect_indices = tokenizer.text_to_sequence(aspect)
+            if cycle:
+                aspect_indices = tokenizer.text_to_sequence_cycle(aspect)  # 0填充
+            else:
+                aspect_indices = tokenizer.text_to_sequence(aspect)  # 0填充
             left_context_len = np.sum(text_left_indices != 0)
             aspect_len = np.sum(aspect_indices != 0)
             auxiliary_aspect_indices = tokenizer.text_to_sequence(auxiliary_aspect)
@@ -225,14 +269,20 @@ class ABSADataset(Dataset):
             aspect_in_text = torch.tensor([left_context_len.item(), (left_context_len + aspect_len - 1).item()])
             polarity = int(polarity) + 1
             sent = text_left + " " + aspect + " " + text_right
-            text_bert_indices = tokenizer.text_to_sequence('[CLS] ' + sent + ' [SEP] ' + aspect + ' [SEP]')
+            if cycle:
+                text_bert_indices = tokenizer.text_to_sequence_cycle('[CLS] ' + sent + ' [SEP] ' + aspect + ' [SEP]')
+            else:
+                text_bert_indices = tokenizer.text_to_sequence('[CLS] ' + sent + ' [SEP] ' + aspect + ' [SEP]')
 
             bert_segments_ids = np.asarray([0] * (np.sum(text_raw_indices != 0) + 2) + [1] * (aspect_len + 1))
             # if 'Roberta' in type(tokenizer.tokenizer).__name__:
             #     bert_segments_ids = np.zeros(np.sum(text_raw_indices != 0) + 2 + aspect_len + 1)
             bert_segments_ids = pad_and_truncate(bert_segments_ids, tokenizer.max_seq_len)  # padding置零
-
-            text_raw_bert_indices = tokenizer.text_to_sequence('[CLS] ' + text_left + " " + aspect + " " + text_right + ' [SEP]')
+            if cycle:
+                text_raw_bert_indices = tokenizer.text_to_sequence_cycle(
+                    '[CLS] ' + text_left + " " + aspect + " " + text_right + ' [SEP]')
+            else:
+                text_raw_bert_indices = tokenizer.text_to_sequence('[CLS] ' + text_left + " " + aspect + " " + text_right + ' [SEP]')
 
             # Find distance in dependency parsing tree
             raw_tokens, dist = calculate_dep_dist(sent,aspect)  # 返回asp与上下文词的距离
@@ -241,8 +291,11 @@ class ABSADataset(Dataset):
             raw_tokens.append('[SEP]')
             dist.append(0)
 
-            _, distance_to_aspect = tokenizer.tokenize(raw_tokens, dist)  # distance_to_aspect就是依赖树距离的输入，shape(80,)
-            aspect_bert_indices = tokenizer.text_to_sequence('[CLS] ' + aspect + ' [SEP]')
+            _, distance_to_aspect = tokenizer.tokenize(raw_tokens, dist)  # distance_to_aspect就是模型输入：依赖树距离，shape(80,)
+            if cycle:
+                aspect_bert_indices = tokenizer.text_to_sequence_cycle('[CLS] ' + aspect + ' [SEP]')
+            else:
+                aspect_bert_indices = tokenizer.text_to_sequence('[CLS] ' + aspect + ' [SEP]')
 
             data = {
                 'text_bert_indices': text_bert_indices,
